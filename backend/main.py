@@ -452,9 +452,18 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
                 yield f"data: {json.dumps({'error': 'File not found on server'})}\n\n"
                 return
 
-            yield f"data: {json.dumps({'progress': 10, 'message': 'Decoding high-res audio matrix...'})}\n\n"
+            yield f"data: {json.dumps({'progress': 10, 'message': 'Decoding high-res audio matrix (30s sample)...'})}\n\n"
             await asyncio.sleep(0.1)
-            audio_data, samplerate = sf.read(file_path)
+            
+            # 1. Peek at the file to get the sample rate without loading the audio
+            info = sf.info(file_path)
+            
+            # 2. Calculate exactly how many "frames" make up 30 seconds
+            max_frames = int(info.samplerate * 30)
+            
+            # 3. Only load those 30 seconds into the server's memory
+            audio_data, samplerate = sf.read(file_path, frames=max_frames)
+            
             if audio_data.ndim > 1: 
                 audio_data = audio_data.T
 
