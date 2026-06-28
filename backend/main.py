@@ -7,6 +7,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
+from pymongo import MongoClient
 import uvicorn
 import librosa
 import pyloudnorm as pyln
@@ -31,6 +32,19 @@ load_dotenv(find_dotenv())
 api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+client_db = MongoClient(os.getenv("MONGO_URI")) 
+db = client_db["mix_oracle"]
+users_collection = db["users"]
+
+def load_users():
+    # Returns a dictionary for easy login checking
+    return {u["email"]: u for u in users_collection.find()}
+
+def save_users(users):
+    # This logic changes slightly; instead of a full save, 
+    # we just insert a new user document
+    pass # You will now use users_collection.insert_one() in register()
 
 # Email Configuration
 conf = ConnectionConfig(
