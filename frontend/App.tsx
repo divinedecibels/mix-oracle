@@ -599,7 +599,14 @@ function App() {
         body: JSON.stringify({ email })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to send code");
+      
+      if (!res.ok) {
+        const errorMsg = typeof data.detail === 'string' 
+          ? data.detail 
+          : (data.detail?.msg || "Failed to send code");
+        throw new Error(errorMsg);
+      }
+      
       setOtpSent(true);
     } catch (err: any) {
       setAuthError(err.message);
@@ -651,7 +658,12 @@ function App() {
       });
       const data = await res.json();
       
-      if (!res.ok) throw new Error(data.detail || "Authentication failed");
+      if (!res.ok) {
+  const errorMsg = typeof data.detail === 'string' 
+    ? data.detail 
+    : (data.detail?.msg || "Authentication failed");
+  throw new Error(errorMsg);
+}
       
       setIsAuthenticated(true);
       setShowAuthModal(false);
@@ -678,7 +690,12 @@ function App() {
       });
       const data = await res.json();
       
-      if (!res.ok) throw new Error(data.detail || "Google authentication failed");
+      if (!res.ok) {
+  const errorMsg = typeof data.detail === 'string' 
+    ? data.detail 
+    : (data.detail?.msg || "Google authentication failed");
+  throw new Error(errorMsg);
+}
       
       setIsAuthenticated(true);
       setShowAuthModal(false);
