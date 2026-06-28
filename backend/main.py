@@ -21,6 +21,7 @@ import secrets
 import bcrypt
 import json
 import asyncio
+import shutil
 from dotenv import load_dotenv, find_dotenv
 from google import genai
 from google.oauth2 import id_token
@@ -216,17 +217,13 @@ async def request_service(name: str = Form(...), email: str = Form(...), message
 @app.post("/upload")
 @limiter.limit("10/minute")
 async def upload_file(request: Request, file: UploadFile = File(...)):
-    MAX_SIZE = 100 * 1024 * 1024 # 100MB Limit
-    content = await file.read()
-    
-    if len(content) > MAX_SIZE:
-        raise HTTPException(400, detail="File too large. Maximum size is 100MB.")
-        
     file_id = str(uuid.uuid4())
     file_path = os.path.join("temp_uploads", f"{file_id}_{file.filename}")
     
+    # shutil streams the file directly to the hard drive in tiny chunks.
+    # RAM usage for this operation: ~0MB.
     with open(file_path, "wb") as buffer:
-        buffer.write(content)
+        shutil.copyfileobj(file.file, buffer)
         
     return {"file_id": file_id, "filename": file.filename}
 
