@@ -220,11 +220,14 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
     file_id = str(uuid.uuid4())
     file_path = os.path.join("temp_uploads", f"{file_id}_{file.filename}")
     
-    # shutil streams the file directly to the hard drive in tiny chunks.
-    # RAM usage for this operation: ~0MB.
+    # Async chunked streaming: strictly limits RAM to 1MB and never freezes the server
     with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
+        while True:
+            chunk = await file.read(1024 * 1024)  # Read exactly 1MB at a time
+            if not chunk:
+                break
+            buffer.write(chunk)
+            
     return {"file_id": file_id, "filename": file.filename}
 
 # --- DSP Math Helpers ---
