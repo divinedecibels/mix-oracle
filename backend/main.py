@@ -270,49 +270,45 @@ def fast_true_peak(y_flat: np.ndarray, sr: int) -> float:
 
     return round(max_tp, 1)
 
-def load_audio_smart(file_path: str, max_duration_s: int = 60):
+def load_audio_smart(file_path: str, max_duration_s: int = 30):
     """
-    Memory-efficient loader — scans for the loudest window
-    without ever loading the full file into RAM.
-    float32 instead of float64 halves array sizes.
+    Scans the entire file in tiny, memory-safe blocks to find the loudest moment (the chorus/drop),
+    then extracts a window centered around that peak for heavy DSP analysis.
     """
     info = sf.info(file_path)
     sr = info.samplerate
-    total_frames = info.frames
-    max_frames = int(sr * max_duration_s)
+    
+    # 1. Stream the file in 2-second blocks to find the loudest part
+    block_frames = int(sr * 2) 
+    max_energy = -1
+    peak_frame_position = 0
+    current_frame = 0
+    
+    # sf.blocks reads directly from the hard drive, bypassing RAM limits
+    for block in sf.blocks(file_path, blocksize=block_frames, dtype='float32', always_2d=True):
+        energy = float(np.mean(block ** 2))
+        if energy > max_energy:
+            max_energy = energy
+            peak_frame_position = current_frame
+        current_frame += block_frames
 
-    # Short track — load everything, still use float32
-    if total_frames <= max_frames:
-        data, _ = sf.read(file_path, dtype='float32', always_2d=True)
-        y = data.T
-        return (y if y.shape[0] == 2 else np.vstack((y, y))), sr
+    # 2. Calculate the start frame to center our 30-second window around the peak
+    window_frames = int(sr * max_duration_s)
+    half_window = window_frames // 2
+    
+    start_frame = max(0, peak_frame_position - half_window)
+    
+    # Ensure we don't try to read past the end of the file
+    if start_frame + window_frames > info.frames:
+        start_frame = max(0, info.frames - window_frames)
 
-    # Scan in 10-second blocks — only 1 block in RAM at a time
-    block = int(sr * 10)
-    n_blocks = total_frames // block
-    window = max_duration_s // 10  # e.g. 6 blocks for 60s
-
-    energies = []
+    # 3. Load ONLY that peak 30-second window into memory
     with sf.SoundFile(file_path) as f:
-        for _ in range(n_blocks):
-            chunk = f.read(block, dtype='float32')
-            energies.append(float(np.mean(chunk ** 2)))
-
-    # Sliding window to find the loudest window
-    best_i, best_e = 0, sum(energies[:window])
-    running = best_e
-    for i in range(1, n_blocks - window + 1):
-        running = running - energies[i - 1] + energies[i + window - 1]
-        if running > best_e:
-            best_e, best_i = running, i
-
-    # Load only the best 60-second segment
-    with sf.SoundFile(file_path) as f:
-        f.seek(best_i * block)
-        segment = f.read(max_frames, dtype='float32', always_2d=True)
+        f.seek(start_frame)
+        segment = f.read(window_frames, dtype='float32', always_2d=True)
 
     y = segment.T
-    return (y if y.shape[0] == 2 else np.vstack((y, y))), sr
+    return (y if y.shape == 2 else np.vstack((y, y))), sr
 
 def get_full_timeline(file_path: str, block_s: int = 4) -> list:
     """
