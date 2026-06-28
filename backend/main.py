@@ -37,14 +37,6 @@ client_db = MongoClient(os.getenv("MONGO_URI"))
 db = client_db["mix_oracle"]
 users_collection = db["users"]
 
-def load_users():
-    # Returns a dictionary for easy login checking
-    return {u["email"]: u for u in users_collection.find()}
-
-def save_users(users):
-    # This logic changes slightly; instead of a full save, 
-    # we just insert a new user document
-    pass # You will now use users_collection.insert_one() in register()
 
 # Email Configuration
 conf = ConnectionConfig(
@@ -81,7 +73,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Auth & Lead Generation ---
+# --- MongoDB Auth ---
 class AuthUser(BaseModel):
     email: str
     password: str
@@ -91,28 +83,21 @@ class AuthUser(BaseModel):
 class OTPRequest(BaseModel):
     email: str
 
-LEADS_FILE = "leads.json"
-OTP_STORE: dict = {} # { email: (code, expiry_timestamp) }
+# Unique index — prevents duplicate emails at the database level
+users_collection.create_index("email", unique=True)
 
-def load_users():
-    if not os.path.exists(LEADS_FILE):
-        return {}
-    with open(LEADS_FILE, "r") as f:
-        return json.load(f)
+OTP_STORE: dict = {}  # { email: (code, expiry_timestamp) }
 
-def save_users(users):
-    with open(LEADS_FILE, "w") as f:
-        json.dump(users, f, indent=4)
 
 @app.post("/auth/send-code")
 async def send_verification_code(req: OTPRequest):
-    users = load_users()
-    if req.email in users:
+    existing = users_collection.find_one({"email": req.email})
+    if existing:
         raise HTTPException(status_code=400, detail="Email already registered. Please log in.")
-        
+
     code = str(secrets.randbelow(900000) + 100000)
-    OTP_STORE[req.email] = (code, time.time() + 600) # 10 minute expiry
-    
+    OTP_STORE[req.email] = (code, time.time() + 600)  # 10-minute expiry
+
     try:
         msg = MessageSchema(
             subject="Your Mix Oracle Verification Code",
@@ -120,78 +105,77 @@ async def send_verification_code(req: OTPRequest):
             body=f"Your verification code is: {code}\n\nWelcome to Mix Oracle by Divine Decibels!",
             subtype="plain"
         )
-        fm = FastMail(conf)
-        await fm.send_message(msg)
+        await FastMail(conf).send_message(msg)
         return {"status": "success", "message": "Code sent!"}
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to send email.")
+
 
 @app.post("/auth/register")
 async def register(user: AuthUser):
-    users = load_users()
-    if user.email in users:
+    if users_collection.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already registered.")
-        
+
     if user.email not in OTP_STORE:
         raise HTTPException(status_code=400, detail="No code sent. Request a new one.")
-        
+
     stored_code, expiry = OTP_STORE[user.email]
-    
+
     if time.time() > expiry:
         del OTP_STORE[user.email]
         raise HTTPException(status_code=400, detail="Code expired. Request a new one.")
-        
+
     if stored_code != user.code:
         raise HTTPException(status_code=400, detail="Invalid verification code.")
-        
+
     hashed = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt())
-    users[user.email] = {"password": hashed.decode("utf-8"), "name": user.name}
-    save_users(users)
+    users_collection.insert_one({
+        "email":         user.email,
+        "password":      hashed.decode("utf-8"),
+        "name":          user.name,
+        "created_at":    time.time(),
+        "auth_provider": "email"
+    })
     del OTP_STORE[user.email]
-    
     return {"status": "success", "message": "Account created!"}
+
 
 @app.post("/auth/login")
 async def login(user: AuthUser):
-    users = load_users()
-    if user.email not in users:
+    existing = users_collection.find_one({"email": user.email})
+    if not existing:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    stored_hash = users[user.email]["password"].encode("utf-8")
+    # Catch Google-only accounts trying to use password login
+    if existing.get("auth_provider") == "google" and not existing.get("password"):
+        raise HTTPException(status_code=401, detail="This account uses Google Sign-In. Please continue with Google.")
+
+    stored_hash = existing["password"].encode("utf-8")
     if not bcrypt.checkpw(user.password.encode("utf-8"), stored_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    return {"status": "success"}
+    return {"status": "success", "name": existing.get("name", "")}
 
-# --- Google OAuth ---
-class GoogleAuthRequest(BaseModel):
-    token: str
-
-def verify_google_token(token: str):
-    if not GOOGLE_CLIENT_ID:
-        return None
-    try:
-        id_info = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
-        return id_info
-    except ValueError:
-        return None
 
 @app.post("/auth/google")
 async def auth_google(payload: GoogleAuthRequest):
-    token = payload.token
-    user_info = verify_google_token(token)
-    
+    user_info = verify_google_token(payload.token)
     if not user_info:
-        raise HTTPException(status_code=401, detail="Invalid Google token")
-    
-    users = load_users()
-    email = user_info['email']
-    name = user_info.get('name', email.split('@')[0])
-    
-    if email not in users:
-        users[email] = {"password": "", "name": name}
-        save_users(users)
-    
+        raise HTTPException(status_code=401, detail="Invalid Google token.")
+
+    email = user_info["email"]
+    name  = user_info.get("name", email.split("@")[0])
+
+    existing = users_collection.find_one({"email": email})
+    if not existing:
+        users_collection.insert_one({
+            "email":         email,
+            "password":      "",
+            "name":          name,
+            "created_at":    time.time(),
+            "auth_provider": "google"
+        })
+
     return {"status": "success", "email": email, "name": name}
 
 # --- Endpoints ---
@@ -269,6 +253,71 @@ def fast_true_peak(y_flat: np.ndarray, sr: int) -> float:
 
     return round(max_tp, 1)
 
+def load_audio_smart(file_path: str, max_duration_s: int = 60):
+    """
+    Memory-efficient loader — scans for the loudest window
+    without ever loading the full file into RAM.
+    float32 instead of float64 halves array sizes.
+    """
+    info = sf.info(file_path)
+    sr = info.samplerate
+    total_frames = info.frames
+    max_frames = int(sr * max_duration_s)
+
+    # Short track — load everything, still use float32
+    if total_frames <= max_frames:
+        data, _ = sf.read(file_path, dtype='float32', always_2d=True)
+        y = data.T
+        return (y if y.shape[0] == 2 else np.vstack((y, y))), sr
+
+    # Scan in 10-second blocks — only 1 block in RAM at a time
+    block = int(sr * 10)
+    n_blocks = total_frames // block
+    window = max_duration_s // 10  # e.g. 6 blocks for 60s
+
+    energies = []
+    with sf.SoundFile(file_path) as f:
+        for _ in range(n_blocks):
+            chunk = f.read(block, dtype='float32')
+            energies.append(float(np.mean(chunk ** 2)))
+
+    # Sliding window to find the loudest window
+    best_i, best_e = 0, sum(energies[:window])
+    running = best_e
+    for i in range(1, n_blocks - window + 1):
+        running = running - energies[i - 1] + energies[i + window - 1]
+        if running > best_e:
+            best_e, best_i = running, i
+
+    # Load only the best 60-second segment
+    with sf.SoundFile(file_path) as f:
+        f.seek(best_i * block)
+        segment = f.read(max_frames, dtype='float32', always_2d=True)
+
+    y = segment.T
+    return (y if y.shape[0] == 2 else np.vstack((y, y))), sr
+
+def get_full_timeline(file_path: str, block_s: int = 4) -> list:
+    """
+    Generates full-track loudness timeline without loading the whole file.
+    Reads one 4-second block at a time — never more than ~1.5MB in RAM.
+    """
+    info = sf.info(file_path)
+    sr = info.samplerate
+    block_frames = int(sr * block_s)
+    timeline = []
+
+    with sf.SoundFile(file_path) as f:
+        while True:
+            chunk = f.read(block_frames, dtype='float32', always_2d=True)
+            if len(chunk) == 0:
+                break
+            mono = np.mean(chunk, axis=1)
+            rms = np.sqrt(np.mean(mono ** 2) + 1e-12)
+            timeline.append(round(float(20 * np.log10(rms)), 1))
+
+    return timeline
+    
 # --- Core Analyzer ---
 def analyze_audio(y: np.ndarray, sr: int):
     is_stereo = y.ndim == 2
@@ -307,9 +356,9 @@ def analyze_audio(y: np.ndarray, sr: int):
     low_corr = get_band_correlation(y_stereo, sr, 0, 150)
     high_corr = get_band_correlation(y_stereo, sr, 5000, sr/2)
 
-    D = np.abs(librosa.stft(y_mono, n_fft=4096))
+    D = np.abs(librosa.stft(y_mono, n_fft=2048))
     magnitudes = librosa.amplitude_to_db(np.mean(D, axis=1), ref=np.max)
-    frequencies = librosa.fft_frequencies(sr=sr, n_fft=4096)
+    frequencies = librosa.fft_frequencies(sr=sr, n_fft=2048)
     
     valid_idx = np.where((frequencies >= 20) & (frequencies <= 20000))
     freqs_filtered = frequencies[valid_idx]
@@ -443,59 +492,64 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
     async def event_generator():
         file_path = None
         try:
+            # Locate the uploaded file
             for f in os.listdir("temp_uploads"):
                 if f.startswith(file_id):
                     file_path = os.path.join("temp_uploads", f)
                     break
-                    
+
             if not file_path:
                 yield f"data: {json.dumps({'error': 'File not found on server'})}\n\n"
                 return
 
-            yield f"data: {json.dumps({'progress': 10, 'message': 'Decoding high-res audio matrix (30s sample)...'})}\n\n"
-            await asyncio.sleep(0.1)
-            
-            # 1. Peek at the file to get the sample rate without loading the audio
-            info = sf.info(file_path)
-            
-            # 2. Calculate exactly how many "frames" make up 30 seconds
-            max_frames = int(info.samplerate * 30)
-            
-            # 3. Only load those 30 seconds into the server's memory
-            audio_data, samplerate = sf.read(file_path, frames=max_frames)
-            
-            if audio_data.ndim > 1: 
-                audio_data = audio_data.T
+            # Step 1: Full-track timeline — lightweight scan, ~1.5MB RAM
+            yield f"data: {json.dumps({'progress': 15, 'message': 'Mapping song energy journey...'})}\n\n"
+            await asyncio.sleep(0.05)
+            full_timeline = get_full_timeline(file_path)
 
-            yield f"data: {json.dumps({'progress': 40, 'message': 'Calculating phase correlation & dynamics...'})}\n\n"
+            # Step 2: Smart load — only the loudest 60s for DSP
+            yield f"data: {json.dumps({'progress': 30, 'message': 'Loading analysis window...'})}\n\n"
+            await asyncio.sleep(0.05)
+            audio_data, samplerate = load_audio_smart(file_path, max_duration_s=60)
+
+            # Step 3: Core DSP analysis
+            yield f"data: {json.dumps({'progress': 50, 'message': 'Calculating phase correlation & dynamics...'})}\n\n"
             await asyncio.sleep(0.1)
             analysis = analyze_audio(audio_data, samplerate)
 
+            # Step 4: Diagnostic rules engine
             yield f"data: {json.dumps({'progress': 70, 'message': 'Generating DSP diagnostic report...'})}\n\n"
             await asyncio.sleep(0.1)
-            issues = generate_diagnostics(analysis["metrics"], analysis["raw_mags"], analysis["raw_freqs"], genre)
+            issues = generate_diagnostics(
+                analysis["metrics"], analysis["raw_mags"], analysis["raw_freqs"], genre
+            )
 
+            # Step 5: AI summary
             yield f"data: {json.dumps({'progress': 85, 'message': 'Consulting AI Mastering Engineer...'})}\n\n"
             await asyncio.sleep(0.1)
             ai_summary = generate_ai_summary(analysis["metrics"], issues, genre)
 
+            # Final payload — inject full-track timeline over the 60s window version
             final_payload = {
                 "status": "complete",
-                "metrics": analysis["metrics"],
+                "metrics": {
+                    **analysis["metrics"],
+                    "loudness_timeline": full_timeline,
+                },
                 "issues": issues,
                 "spectrum": analysis["spectrum"],
                 "ai_summary": ai_summary,
-                "genre": genre
+                "genre": genre,
             }
             yield f"data: {json.dumps(final_payload)}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            
+
         finally:
             if file_path and os.path.exists(file_path):
                 os.remove(file_path)
-               
+
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 if __name__ == "__main__":
