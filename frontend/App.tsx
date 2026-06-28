@@ -676,7 +676,7 @@ function App() {
     }
   };
 
-  const handleGoogleLoginSuccess = async (credentialResponse: any) => {
+const handleGoogleLoginSuccess = async (credentialResponse: any) => {
     setAuthLoading(true);
     setAuthError("");
     try {
@@ -691,17 +691,18 @@ function App() {
       const data = await res.json();
       
       if (!res.ok) {
-  const errorMsg = typeof data.detail === 'string' 
-    ? data.detail 
-    : (data.detail?.msg || "Google authentication failed");
-  throw new Error(errorMsg);
-}
+        const errorMsg = typeof data.detail === 'string' 
+          ? data.detail 
+          : (data.detail?.?.msg || "Google authentication failed");
+        throw new Error(errorMsg);
+      }
       
       setIsAuthenticated(true);
       setShowAuthModal(false);
       
       if (selectedFile) uploadAndAnalyze(selectedFile);
     } catch (err: any) {
+      console.log("Full error object:", err);
       setAuthError(err.message || "An unexpected error occurred");
     } finally {
       setAuthLoading(false);
