@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@keyframes pulse-bars {
+  0%, 100% { height: 20%; }
+  50% { height: 80%; }
+}
+.animate-bar { animation: pulse-bars 0.8s ease-in-out infinite; }
