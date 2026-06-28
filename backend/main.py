@@ -421,18 +421,18 @@ def analyze_audio(y: np.ndarray, sr: int):
             "true_peak": float(round(true_peak_db, 1)),
             "correlation": float(round(overall_corr, 2)),
             "plr": float(round(plr, 1)),
-            "dr": float(dr),
+            "dr": float(round(dr, 1)), # Ensure this is rounded
             "low_correlation": float(round(low_corr, 2)),
             "high_correlation": float(round(high_corr, 2)),
-            "dc_offset": float(dc_offset),
+            "dc_offset": float(round(dc_offset, 4)), # More precision for tiny offsets
             "lr_balance": float(round(lr_balance_diff, 2)),
             "macro_dynamics": float(round(macro_dynamics, 1)),
             "mono_compatibility": float(round(mono_compatibility, 1)),
-            "loudness_timeline": [float(val) for val in loudness_timeline]
+            "loudness_timeline": [round(float(val), 1) for val in loudness_timeline] # Clean the timeline too
         },
         "spectrum": {
-            "frequencies": [float(val) for val in freqs_filtered[indices].tolist()], 
-            "magnitudes": [float(val) for val in mags_filtered[indices].tolist()]
+            "frequencies": [round(float(val), 1) for val in freqs_filtered[indices].tolist()], 
+            "magnitudes": [round(float(val), 1) for val in mags_filtered[indices].tolist()]
         },
         "raw_mags": mags_filtered, 
         "raw_freqs": freqs_filtered
