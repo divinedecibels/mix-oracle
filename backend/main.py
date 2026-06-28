@@ -25,6 +25,7 @@ from dotenv import load_dotenv, find_dotenv
 from google import genai
 from google.oauth2 import id_token
 from google.auth.transport import requests
+import certifi
 
 # Load environment variables
 load_dotenv(find_dotenv())
@@ -33,7 +34,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
-client_db = MongoClient(os.getenv("MONGO_URI")) 
+client_db = MongoClient(os.getenv("MONGO_URI"), tlsCAFile=certifi.where())
 db = client_db["mix_oracle"]
 users_collection = db["users"]
 
