@@ -84,6 +84,22 @@ class AuthUser(BaseModel):
 class OTPRequest(BaseModel):
     email: str
 
+class GoogleAuthRequest(BaseModel):
+    token: str
+
+def verify_google_token(token: str):
+    try:
+        # Verify the token with Google
+        idinfo = id_token.verify_oauth2_token(
+            token, 
+            requests.Request(), 
+            GOOGLE_CLIENT_ID
+        )
+        return idinfo
+    except ValueError:
+        # Invalid token
+        return None
+        
 # Unique index — prevents duplicate emails at the database level
 users_collection.create_index("email", unique=True)
 
