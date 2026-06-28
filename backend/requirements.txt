@@ -1,13 +1,27 @@
-numpy==1.26.4
-scipy==1.13.0
-librosa==0.10.1
-pyloudnorm==0.1.1
+# Web Framework & Server
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
-python-dotenv
-google-genai
-fastapi-mail
-bcrypt
-slowapi
+
+# Audio Processing
+librosa
+pyloudnorm
+soundfile
+numpy
+scipy
+
+# Database & Security
 pymongo
+bcrypt
+python-dotenv
+cryptography
+
+# AI & Auth
+google-genai
+google-auth
+fastapi-mail
+
+# Utilities
+slowapi
+anyio
+pydantic
