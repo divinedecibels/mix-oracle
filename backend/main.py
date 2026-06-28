@@ -99,7 +99,7 @@ def verify_google_token(token: str):
     except ValueError:
         # Invalid token
         return None
-        
+
 # Unique index — prevents duplicate emails at the database level
 users_collection.create_index("email", unique=True)
 
@@ -417,21 +417,25 @@ def analyze_audio(y: np.ndarray, sr: int):
 
     return {
         "metrics": {
-            "lufs": round(lufs, 1),
-            "true_peak": round(true_peak_db, 1),
-            "correlation": round(overall_corr, 2),
-            "plr": round(plr, 1),
-            "dr": dr,
-            "low_correlation": round(low_corr, 2),
-            "high_correlation": round(high_corr, 2),
-            "dc_offset": dc_offset,
-            "lr_balance": round(lr_balance_diff, 2),
-            "macro_dynamics": round(macro_dynamics, 1),
-            "mono_compatibility": round(mono_compatibility, 1),
-            "loudness_timeline": loudness_timeline
+            "lufs": float(round(lufs, 1)),
+            "true_peak": float(round(true_peak_db, 1)),
+            "correlation": float(round(overall_corr, 2)),
+            "plr": float(round(plr, 1)),
+            "dr": float(dr),
+            "low_correlation": float(round(low_corr, 2)),
+            "high_correlation": float(round(high_corr, 2)),
+            "dc_offset": float(dc_offset),
+            "lr_balance": float(round(lr_balance_diff, 2)),
+            "macro_dynamics": float(round(macro_dynamics, 1)),
+            "mono_compatibility": float(round(mono_compatibility, 1)),
+            "loudness_timeline": [float(val) for val in loudness_timeline]
         },
-        "spectrum": {"frequencies": freqs_filtered[indices].tolist(), "magnitudes": mags_filtered[indices].tolist()},
-        "raw_mags": mags_filtered, "raw_freqs": freqs_filtered
+        "spectrum": {
+            "frequencies": [float(val) for val in freqs_filtered[indices].tolist()], 
+            "magnitudes": [float(val) for val in mags_filtered[indices].tolist()]
+        },
+        "raw_mags": mags_filtered, 
+        "raw_freqs": freqs_filtered
     }
 
 def generate_diagnostics(metrics, raw_mags, raw_freqs, genre):
