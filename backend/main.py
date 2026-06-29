@@ -341,11 +341,13 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
         # Mono 1D -> (2, N)
         y = np.vstack((y, y))
     elif y.ndim == 2:
+        # Get shape as a tuple and check indices
+        shape = y.shape
         # If (Samples, Channels), transpose to (Channels, Samples)
-        if y.shape > y.shape:
+        if shape > shape:
             y = y.T
         
-        # Now safely extract channels using integer indexing
+        # Now access channel count safely via index
         channels = int(y.shape)
         
         if channels == 1:
@@ -356,7 +358,6 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
     # Now y is guaranteed to be (2, Samples)
     y_stereo = y
     y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
-    # ... (rest of your function remains the same)
 
     meter = pyln.Meter(sr) 
     y_transposed = y_stereo.T # Now safely guarantees (samples, 2) structure
