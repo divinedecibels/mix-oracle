@@ -424,11 +424,11 @@ def analyze_audio(y: np.ndarray, sr: int):
             "true_peak": float(round(true_peak_db, 1)),
             "correlation": float(round(overall_corr, 2)),
             "plr": float(round(plr, 1)),
-            "dr": float(round(dr, 1)), # Ensure this is rounded
+            "dr":         float(f"{dr:.1f}"),
             "low_correlation": float(round(low_corr, 2)),
             "high_correlation": float(round(high_corr, 2)),
-            "dc_offset": float(round(dc_offset, 4)), # More precision for tiny offsets
-            "lr_balance": float(round(lr_balance_diff, 2)),
+            "dc_offset": float(f"{dc_offset:.4f}"), # More precision for tiny offsets
+            "lr_balance": float(f"{lr_balance_diff:.2f}"),
             "macro_dynamics": float(round(macro_dynamics, 1)),
             "mono_compatibility": float(round(mono_compatibility, 1)),
             "loudness_timeline": [round(float(val), 1) for val in loudness_timeline] # Clean the timeline too
@@ -463,7 +463,7 @@ def generate_diagnostics(metrics, raw_mags, raw_freqs, genre):
     sub_allowance = 6.0 if genre == "EDM / Hip-Hop" else 3.0
 
     if abs(metrics["dc_offset"]) > 0.005: issues.append({"id": "dc_offset", "priority": "FIX NOW", "title": "DC Offset Detected", "body": "Waveform is not centered at zero. This causes asymmetrical limiting.", "action": "Apply a high-pass filter at 10Hz to your master bus."})
-    if metrics["lr_balance"] > 1.5: issues.append({"id": "lr_imbalance", "priority": "REVIEW", "title": "Lopsided Mix", "body": f"One channel is {metrics['lr_balance']}dB louder than the other.", "action": "Check your hard-panned elements and balance them."})
+    if metrics["lr_balance"] > 1.5: issues.append({"id": "lr_imbalance", "priority": "REVIEW", "title": "Lopsided Mix", "body": f"One channel is {metrics['lr_balance']:.1f} dB louder than the other.", "action": "Check your hard-panned elements and balance them."})
     if metrics["macro_dynamics"] < 2.0 and metrics["lufs"] < -8.0 and genre != "EDM / Hip-Hop": issues.append({"id": "flat_macro_dynamics", "priority": "REVIEW", "title": "Flat Song Journey", "body": "Verses are just as loud as choruses, lacking emotional impact.", "action": "Automate mix bus volume up by 1dB during the chorus."})
     if (high_mids - ultra_highs) > 35.0: issues.append({"id": "fake_lossless", "priority": "FIX NOW", "title": "Fake Lossless File", "body": "Unnatural drop-off above 16kHz. Usually means an MP3 was rendered as a WAV.", "action": "Re-bounce the original project as a true WAV."})
     if metrics["true_peak"] > 0.5: issues.append({"id": "severe_clipping", "priority": "FIX NOW", "title": "Severe Clipping", "body": f"Peaks hitting {metrics['true_peak']} dBTP. This causes distortion.", "action": "Lower final limiter output ceiling to -1.0 dB."})
