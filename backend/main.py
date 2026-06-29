@@ -335,20 +335,21 @@ def get_full_timeline(file_path: str, block_s: int = 4) -> list:
 
 # --- Core Analyzer ---
 def analyze_audio(y: np.ndarray, sr: int) -> dict:
+    # Bulletproof shape normalizer
     y = np.asarray(y, dtype=np.float32)
     
-    # Force shape to be a concrete tuple and then normalize
+    # FIX: Get the shape as a tuple
     shape = y.shape
+    
     if y.ndim == 1:
         y = np.vstack((y, y))
     elif y.ndim == 2:
-        # Cast to explicit integers for comparison
-        channels = int(shape)
+        # FIX: Access index 0 of the shape tuple to get channel count
+        channels = int(shape) 
         if channels == 1:
             y = np.vstack((y, y))
         elif channels > 2:
             y = y[:2, :]
-    # ... (rest of function)
         
     y_stereo = y
     y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
