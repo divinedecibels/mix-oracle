@@ -400,33 +400,48 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
         </div>
       )}
 
-      {/* Metric Cards */}    
+{/* Metric Cards */}    
 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
     <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Loudness</p>
-    <p className="text-2xl font-black">{metrics.lufs.toFixed(1)} <span className="text-xs text-[#3F3F46]">LUFS</span></p>
-  </div>
-  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">True Peak</p>
-    <p className="text-2xl font-black">{metrics.true_peak.toFixed(1)} <span className="text-xs text-[#3F3F46]">dBTP</span></p>
-  </div>
-  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Correlation</p>
-    <p className="text-2xl font-black">{metrics.correlation.toFixed(2)}</p>
-  </div>
-  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Mono Collapse</p>
-    <p className={`text-2xl font-black ${metrics.mono_compatibility < -3 ? 'text-red-500' : 'text-white'}`}>
-      {metrics.mono_compatibility.toFixed(1)} <span className="text-xs text-[#3F3F46]">dB</span>
+    <p className="text-2xl font-black truncate" title={`${metrics.lufs} LUFS`}>
+      {Number(metrics.lufs).toFixed(1)} <span className="text-xs text-[#3F3F46]">LUFS</span>
     </p>
   </div>
-  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">PLR</p>
-    <p className="text-2xl font-black">{metrics.plr.toFixed(1)} <span className="text-xs text-[#3F3F46]">dB</span></p>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">True Peak</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.true_peak} dBTP`}>
+      {Number(metrics.true_peak).toFixed(1)} <span className="text-xs text-[#3F3F46]">dBTP</span>
+    </p>
   </div>
-  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Correlation</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.correlation}`}>
+      {Number(metrics.correlation).toFixed(2)}
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1 truncate">Mono Collapse</p>
+    <p className={`text-2xl font-black truncate ${metrics.mono_compatibility < -3 ? 'text-red-500' : 'text-white'}`} title={`${metrics.mono_compatibility} dB`}>
+      {Number(metrics.mono_compatibility).toFixed(1)} <span className="text-xs text-[#3F3F46]">dB</span>
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">PLR</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.plr} dB`}>
+      {Number(metrics.plr).toFixed(1)} <span className="text-xs text-[#3F3F46]">dB</span>
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
     <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">DR</p>
-    <p className="text-2xl font-black">{metrics.dr?.toFixed(1) ?? '--'} <span className="text-xs text-[#3F3F46]">dB</span></p>
+    <p className="text-2xl font-black truncate" title={`${metrics.dr} dB`}>
+      {metrics.dr !== undefined && metrics.dr !== null ? Number(metrics.dr).toFixed(1) : '--'} <span className="text-xs text-[#3F3F46]">dB</span>
+    </p>
   </div>
 </div>
 
