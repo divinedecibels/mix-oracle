@@ -774,6 +774,10 @@ const handleGoogleLoginSuccess = async (credentialResponse: any) => {
       eventSource.onmessage = (event) => {
         if (event.data === "heartbeat") return;
         const data = JSON.parse(event.data);
+
+        // ====== ADD THIS LOG HERE ======
+        console.log("RAW BACKEND PAYLOAD:", data);
+       // ===============================
         
         if (data.error) {
           eventSource.close();
