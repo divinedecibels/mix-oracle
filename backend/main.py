@@ -335,23 +335,14 @@ def get_full_timeline(file_path: str, block_s: int = 4) -> list:
 # --- Core Analyzer ---
 def analyze_audio(y: np.ndarray, sr: int) -> dict:
     y = np.asarray(y, dtype=np.float32)
-    
+
     if y.ndim == 1:
         y = np.vstack((y, y))
-    elif y.ndim == 2:
-        shape = y.shape
-        if shape > shape:
-            y = y.T
-        
-        channels = int(y.shape)
-        if channels == 1:
-            y = np.vstack((y, y))
-        elif channels > 2:
-            y = y[:2, :]
-    
+
     y_stereo = y
     y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
 
+    
     meter = pyln.Meter(sr) 
     y_transposed = y_stereo.T 
     lufs = meter.integrated_loudness(y_transposed)
