@@ -344,11 +344,11 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
         # Get shape as a tuple and check indices
         shape = y.shape
         # If (Samples, Channels), transpose to (Channels, Samples)
-        if shape > shape:
+        if shape[0] > shape[1]:
             y = y.T
         
         # Now access channel count safely via index
-        channels = int(y.shape)
+        channels = int(y.shape[0])  
         
         if channels == 1:
             y = np.vstack((y, y))
