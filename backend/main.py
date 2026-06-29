@@ -336,36 +336,30 @@ def get_full_timeline(file_path: str, block_s: int = 4) -> list:
 def analyze_audio(y: np.ndarray, sr: int) -> dict:
     y = np.asarray(y, dtype=np.float32)
     
-    # 1. Normalize dimensions to be (Channels, Samples)
     if y.ndim == 1:
-        # Mono 1D -> (2, N)
         y = np.vstack((y, y))
     elif y.ndim == 2:
-        # Get shape as a tuple and check indices
         shape = y.shape
-        # If (Samples, Channels), transpose to (Channels, Samples)
-        if shape[0] > shape[1]:
+        if shape > shape:
             y = y.T
         
-        # Now access channel count safely via index
-        channels = int(y.shape[0])  
-        
+        channels = int(y.shape)
         if channels == 1:
             y = np.vstack((y, y))
         elif channels > 2:
             y = y[:2, :]
     
-    # Now y is guaranteed to be (2, Samples)
     y_stereo = y
     y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
 
     meter = pyln.Meter(sr) 
-    y_transposed = y_stereo.T # Now safely guarantees (samples, 2) structure
+    y_transposed = y_stereo.T 
     lufs = meter.integrated_loudness(y_transposed)
     true_peak_db = fast_true_peak(y_transposed.flatten(), sr)
     plr = true_peak_db - lufs
     dc_offset = float(np.mean(y_mono))
     
+    # RESTORED: and for Left/Right RMS
     rms_l = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
     rms_r = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
     lr_balance_diff = round(abs(rms_l - rms_r), 2)
@@ -379,6 +373,7 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
     else:
         macro_dynamics = 0.0
 
+    # RESTORED: and for Correlation
     overall_corr = calculate_true_correlation(y_stereo, y_stereo)
     low_corr = get_band_correlation(y_stereo, sr, 0, 150)
     high_corr = get_band_correlation(y_stereo, sr, 5000, sr/2)
@@ -402,12 +397,13 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
     target_freqs = np.geomspace(20, 20000, num=100)
     indices = [np.argmin(np.abs(freqs_filtered - f)) for f in target_freqs]
 
+    # RESTORED: and for Mono Compatibility
     mono_signal = (y_stereo + y_stereo) / 2.0
-    rms_l = np.sqrt(np.mean(y_stereo**2) + 1e-12)
-    rms_r = np.sqrt(np.mean(y_stereo**2) + 1e-12)
-    rms_stereo = np.sqrt((rms_l**2 + rms_r**2) / 2.0)
-    rms_mono = np.sqrt(np.mean(mono_signal**2) + 1e-12)
-    mono_compatibility = round(20 * np.log10(rms_mono / rms_stereo), 1)
+    rms_l_mono = np.sqrt(np.mean(y_stereo**2) + 1e-12)
+    rms_r_mono = np.sqrt(np.mean(y_stereo**2) + 1e-12)
+    rms_stereo = np.sqrt((rms_l_mono**2 + rms_r_mono**2) / 2.0)
+    rms_mono_calc = np.sqrt(np.mean(mono_signal**2) + 1e-12)
+    mono_compatibility = round(20 * np.log10(rms_mono_calc / rms_stereo), 1)
 
     block_size = 4 * sr
     n_timeline_blocks = len(y_mono) // block_size
@@ -518,10 +514,12 @@ def generate_ai_summary(metrics, issues, genre):
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(model='gemini-2.5-flash-lite', contents=prompt)
+            # UPDATED: Switched model string to a more stable endpoint
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             return response.text.strip()
         except Exception as e:
             error_msg = str(e)
+            print(f"Gemini API Error (Attempt {attempt+1}): {error_msg}") # Added for debugging in Render
             if "503" in error_msg or "UNAVAILABLE" in error_msg or "429" in error_msg:
                 if attempt < max_retries - 1:
                     time.sleep(2)
