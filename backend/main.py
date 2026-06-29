@@ -9,7 +9,6 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
 from pymongo import MongoClient
 import uvicorn
-import librosa
 import pyloudnorm as pyln
 import numpy as np
 import soundfile as sf
@@ -308,7 +307,7 @@ def load_audio_smart(file_path: str, max_duration_s: int = 30):
         segment = f.read(window_frames, dtype='float32', always_2d=True)
 
     y = segment.T
-    return (y if y.shape == 2 else np.vstack((y, y))), sr
+    return (y if y.shape[0] == 2 else np.vstack((y, y))), sr
 
 def get_full_timeline(file_path: str, block_s: int = 4) -> list:
     """
@@ -340,7 +339,7 @@ def analyze_audio(y: np.ndarray, sr: int):
         is_stereo = y.shape[0] == 2
     
     y_stereo = y if is_stereo else np.vstack((y, y))
-    y_mono = librosa.to_mono(y_stereo)
+    y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
 
     meter = pyln.Meter(sr) 
     y_transposed = y_stereo.T 
@@ -369,9 +368,17 @@ def analyze_audio(y: np.ndarray, sr: int):
     low_corr = get_band_correlation(y_stereo, sr, 0, 150)
     high_corr = get_band_correlation(y_stereo, sr, 5000, sr/2)
 
-    D = np.abs(librosa.stft(y_mono, n_fft=2048))
-    magnitudes = librosa.amplitude_to_db(np.mean(D, axis=1), ref=np.max)
-    frequencies = librosa.fft_frequencies(sr=sr, n_fft=2048)
+    n_fft      = 2048
+    hop_length = n_fft // 4
+    win        = np.hanning(n_fft).astype(np.float32)
+    frames = [
+    np.abs(np.fft.rfft(y_mono[s:s + n_fft] * win))
+    for s in range(0, len(y_mono) - n_fft, hop_length)
+    ]
+    avg_mag    = np.mean(frames, axis=0) if frames else np.abs(np.fft.rfft(y_mono[:n_fft]))
+    ref_val    = np.max(avg_mag) + 1e-12
+    magnitudes = (20 * np.log10(avg_mag / ref_val + 1e-12)).astype(np.float32)
+    frequencies = np.fft.rfftfreq(n_fft, 1.0 / sr).astype(np.float32)
     
     valid_idx = np.where((frequencies >= 20) & (frequencies <= 20000))
     freqs_filtered = frequencies[valid_idx]
