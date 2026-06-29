@@ -21,9 +21,14 @@ interface AnalysisResults {
     true_peak: number;
     correlation: number;
     plr: number;
+    dr: number;
     mono_compatibility: number;
     loudness_timeline: number[];
-    dr: number;
+    lr_balance: number;
+    low_correlation: number;
+    high_correlation: number;
+    dc_offset: number;
+    macro_dynamics: number;
   };
   issues: DiagnosticIssue[];
   spectrum: {
@@ -246,7 +251,7 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
     const range = maxDb - minDb || 1;
 
     return timeline.map((db, i) => {
-      const x = (i / (timeline.length - 1)) * width;
+      const x = timeline.length > 1 ? (i / (timeline.length - 1)) * width : width / 2;
       const y = height - ((db - minDb) / range) * height;
       return `${i === 0 ? 'M' : 'L'}${x},${y}`;
     }).join(' ');
@@ -473,7 +478,7 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
             return (
               <div key={i} className="bg-[#1A1A20] p-4 rounded-xl border border-[#26262C]">
                 <p className="text-xs text-[#6B7280] font-bold mb-1">{item.platform}</p>
-                <p className="text-xl font-black mb-2">{metrics.lufs} <span className="text-xs text-[#3F3F46]">LUFS</span></p>
+                <p className="text-xl font-black mb-2">{metrics.lufs.toFixed(1)} <span className="text-xs text-[#3F3F46]">LUFS</span></p>
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-[#3F3F46]">Target: {item.target} LUFS</span>
                   <span className={`${isLoud ? 'text-[#EF4444]' : 'text-[#10B981]'} font-bold`}>{isLoud ? 'LOUD' : 'SAFE'}</span>
@@ -693,7 +698,7 @@ const handleGoogleLoginSuccess = async (credentialResponse: any) => {
       if (!res.ok) {
         const errorMsg = typeof data.detail === 'string' 
           ? data.detail 
-          : (data.detail?.?.msg || "Google authentication failed");
+          : (data.detail?.msg || "Google authentication failed");
         throw new Error(errorMsg);
       }
       
@@ -889,7 +894,7 @@ const handleGoogleLoginSuccess = async (credentialResponse: any) => {
             <div className="mt-6 text-sm text-[#8E8E93]">
               {authMode === 'signup' ? "Already have an account? " : "Don't have an account? "}
               <button 
-                onClick={() => { setAuthMode(authMode === 'signup' ? 'login' : 'signup'); setAuthError(""); }} 
+                onClick={() => { setAuthMode(authMode === 'signup' ? 'login' : 'signup'); setAuthError(""); setOtpSent(false); }} 
                 className="text-white font-bold hover:underline"
               >
                 {authMode === 'signup' ? "Log in" : "Sign up"}
