@@ -195,6 +195,7 @@ async def auth_google(payload: GoogleAuthRequest):
 
     return {"status": "success", "email": email, "name": name}
 
+
 # --- Endpoints ---
 @app.post("/request-service")
 async def request_service(name: str = Form(...), email: str = Form(...), message: str = Form(...)):
@@ -213,6 +214,7 @@ async def request_service(name: str = Form(...), email: str = Form(...), message
         print(error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
 
+
 @app.post("/upload")
 @limiter.limit("10/minute")
 async def upload_file(request: Request, file: UploadFile = File(...)):
@@ -229,6 +231,7 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
             
     return {"file_id": file_id, "filename": file.filename}
 
+
 # --- DSP Math Helpers ---
 def calculate_true_correlation(L, R):
     mid = L + R
@@ -237,6 +240,7 @@ def calculate_true_correlation(L, R):
     rms_side = np.sqrt(np.mean(side**2) + 1e-10)
     if (rms_mid + rms_side) == 0: return 1.0
     return float((rms_mid - rms_side) / (rms_mid + rms_side))
+
 
 def get_band_correlation(y_stereo, sr, lowcut, highcut):
     nyq = 0.5 * sr
@@ -250,6 +254,7 @@ def get_band_correlation(y_stereo, sr, lowcut, highcut):
     l_filt = sosfilt(sos, y_stereo)
     r_filt = sosfilt(sos, y_stereo)
     return calculate_true_correlation(l_filt, r_filt)
+
 
 def fast_true_peak(y_flat: np.ndarray, sr: int) -> float:
     chunk = int(sr * 2)
@@ -268,6 +273,7 @@ def fast_true_peak(y_flat: np.ndarray, sr: int) -> float:
         max_tp = max(max_tp, tp)
 
     return round(max_tp, 1)
+
 
 def load_audio_smart(file_path: str, max_duration_s: int = 30):
     """
@@ -307,7 +313,15 @@ def load_audio_smart(file_path: str, max_duration_s: int = 30):
         segment = f.read(window_frames, dtype='float32', always_2d=True)
 
     y = segment.T
-    return (y if y.shape == 2 else np.vstack((y, y))), sr
+    
+    # Force stereo configuration
+    if y.shape == 1:
+        y = np.vstack((y, y))
+    elif y.shape > 2:
+        y = y[:2, :]
+        
+    return y, sr
+
 
 def get_full_timeline(file_path: str, block_s: int = 4) -> list:
     """
@@ -330,30 +344,30 @@ def get_full_timeline(file_path: str, block_s: int = 4) -> list:
 
     return timeline
     
+
 # --- Core Analyzer ---
-def analyze_audio(y: np.ndarray, sr: int):
-    is_stereo = y.ndim == 2
-    if is_stereo:
-        if y.shape != 2:
-            y = y.T
-        is_stereo = y.shape == 2
-    
-    y_stereo = y if is_stereo else np.vstack((y, y))
+def analyze_audio(y: np.ndarray, sr: int) -> dict:
+    # Normalize to stereo regardless of input channel count
+    if y.ndim == 1:
+        y = np.vstack((y, y))
+    elif y.shape == 1:
+        y = np.vstack((y, y))
+    elif y.shape > 2:
+        y = y[:2, :]
+        
+    y_stereo = y
     y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
 
     meter = pyln.Meter(sr) 
-    y_transposed = y_stereo.T 
+    y_transposed = y_stereo.T # Now safely guarantees (samples, 2) structure
     lufs = meter.integrated_loudness(y_transposed)
     true_peak_db = fast_true_peak(y_transposed.flatten(), sr)
     plr = true_peak_db - lufs
     dc_offset = float(np.mean(y_mono))
     
-    if is_stereo:
-        rms_l = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
-        rms_r = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
-        lr_balance_diff = round(abs(rms_l - rms_r), 2)
-    else:
-        lr_balance_diff = 0.0
+    rms_l = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
+    rms_r = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
+    lr_balance_diff = round(abs(rms_l - rms_r), 2)
 
     n_blocks = len(y_mono) // sr
     if n_blocks > 0:
@@ -427,11 +441,11 @@ def analyze_audio(y: np.ndarray, sr: int):
             "dr":         float(f"{dr:.1f}"),
             "low_correlation": float(round(low_corr, 2)),
             "high_correlation": float(round(high_corr, 2)),
-            "dc_offset": float(f"{dc_offset:.4f}"), # More precision for tiny offsets
+            "dc_offset": float(f"{dc_offset:.4f}"),
             "lr_balance": float(f"{lr_balance_diff:.2f}"),
             "macro_dynamics": float(round(macro_dynamics, 1)),
             "mono_compatibility": float(round(mono_compatibility, 1)),
-            "loudness_timeline": [round(float(val), 1) for val in loudness_timeline] # Clean the timeline too
+            "loudness_timeline": [round(float(val), 1) for val in loudness_timeline]
         },
         "spectrum": {
             "frequencies": [round(float(val), 1) for val in freqs_filtered[indices].tolist()], 
@@ -440,6 +454,7 @@ def analyze_audio(y: np.ndarray, sr: int):
         "raw_mags": mags_filtered, 
         "raw_freqs": freqs_filtered
     }
+
 
 def generate_diagnostics(metrics, raw_mags, raw_freqs, genre):
     issues = []
@@ -476,6 +491,7 @@ def generate_diagnostics(metrics, raw_mags, raw_freqs, genre):
 
     return issues
 
+
 def generate_ai_summary(metrics, issues, genre):
     if not client: return "AI analysis skipped: Please add your Gemini API key to the backend."
     
@@ -510,6 +526,7 @@ def generate_ai_summary(metrics, issues, genre):
                     time.sleep(2)
                     continue
             return "Our AI assistant is currently taking a quick break, but your raw diagnostic data is ready below!"
+
 
 @app.get("/analyze_stream/{file_id}")
 async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
@@ -569,7 +586,7 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
                 "metrics": {
                     **analysis["metrics"],
                     "loudness_timeline": full_timeline,
-                    "dr": full_dr,  # ← override windowed DR with full-track DR
+                    "dr": full_dr,
                 },
                 "issues": issues,
                 "spectrum": analysis["spectrum"],
@@ -578,6 +595,8 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
             }
             yield f"data: {json.dumps(final_payload)}\n\n"
 
+        except ValueError as e:
+            yield f"data: {json.dumps({'error': f'Audio format issue: {str(e)}. Try exporting as WAV or AIFF instead of MP3.'})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
