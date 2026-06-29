@@ -21,9 +21,14 @@ interface AnalysisResults {
     true_peak: number;
     correlation: number;
     plr: number;
+    dr: number;
     mono_compatibility: number;
     loudness_timeline: number[];
-    dr: number;
+    lr_balance: number;
+    low_correlation: number;
+    high_correlation: number;
+    dc_offset: number;
+    macro_dynamics: number;
   };
   issues: DiagnosticIssue[];
   spectrum: {
@@ -246,7 +251,7 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
     const range = maxDb - minDb || 1;
 
     return timeline.map((db, i) => {
-      const x = (i / (timeline.length - 1)) * width;
+      const x = timeline.length > 1 ? (i / (timeline.length - 1)) * width : width / 2;
       const y = height - ((db - minDb) / range) * height;
       return `${i === 0 ? 'M' : 'L'}${x},${y}`;
     }).join(' ');
@@ -395,35 +400,50 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
         </div>
       )}
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-            <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Loudness</p>
-            <p className="text-2xl font-black">{metrics.lufs} <span className="text-xs text-[#3F3F46]">LUFS</span></p>
-          </div>
-          <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-            <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">True Peak</p>
-            <p className="text-2xl font-black">{metrics.true_peak} <span className="text-xs text-[#3F3F46]">dBTP</span></p>
-          </div>
-          <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-            <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Correlation</p>
-            <p className="text-2xl font-black">{metrics.correlation}</p>
-          </div>
-          <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-            <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Mono Collapse</p>
-            <p className={`text-2xl font-black ${metrics.mono_compatibility < -3 ? 'text-red-500' : 'text-white'}`}>
-              {metrics.mono_compatibility} <span className="text-xs text-[#3F3F46]">dB</span>
-            </p>
-          </div>
-          <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-            <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">PLR</p>
-            <p className="text-2xl font-black">{metrics.plr} <span className="text-xs text-[#3F3F46]">dB</span></p>
-          </div>
-          <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
-            <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">DR</p>
-            <p className="text-2xl font-black">{metrics.dr ?? '--'} <span className="text-xs text-[#3F3F46]">dB</span></p>
-          </div>
-      </div>
+{/* Metric Cards */}    
+<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Loudness</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.lufs} LUFS`}>
+      {Number(metrics.lufs).toFixed(1)} <span className="text-xs text-[#3F3F46]">LUFS</span>
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">True Peak</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.true_peak} dBTP`}>
+      {Number(metrics.true_peak).toFixed(1)} <span className="text-xs text-[#3F3F46]">dBTP</span>
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Correlation</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.correlation}`}>
+      {Number(metrics.correlation).toFixed(2)}
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1 truncate">Mono Collapse</p>
+    <p className={`text-2xl font-black truncate ${metrics.mono_compatibility < -3 ? 'text-red-500' : 'text-white'}`} title={`${metrics.mono_compatibility} dB`}>
+      {Number(metrics.mono_compatibility).toFixed(1)} <span className="text-xs text-[#3F3F46]">dB</span>
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">PLR</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.plr} dB`}>
+      {Number(metrics.plr).toFixed(1)} <span className="text-xs text-[#3F3F46]">dB</span>
+    </p>
+  </div>
+  
+  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
+    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">DR</p>
+    <p className="text-2xl font-black truncate" title={`${metrics.dr} dB`}>
+      {metrics.dr !== undefined && metrics.dr !== null ? Number(metrics.dr).toFixed(1) : '--'} <span className="text-xs text-[#3F3F46]">dB</span>
+    </p>
+  </div>
+</div>
 
       <div className="grid md:grid-cols-3 gap-6 mb-12">
         {issues.map((issue) => (
@@ -473,7 +493,7 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
             return (
               <div key={i} className="bg-[#1A1A20] p-4 rounded-xl border border-[#26262C]">
                 <p className="text-xs text-[#6B7280] font-bold mb-1">{item.platform}</p>
-                <p className="text-xl font-black mb-2">{metrics.lufs} <span className="text-xs text-[#3F3F46]">LUFS</span></p>
+                <p className="text-xl font-black mb-2">{metrics.lufs.toFixed(1)} <span className="text-xs text-[#3F3F46]">LUFS</span></p>
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-[#3F3F46]">Target: {item.target} LUFS</span>
                   <span className={`${isLoud ? 'text-[#EF4444]' : 'text-[#10B981]'} font-bold`}>{isLoud ? 'LOUD' : 'SAFE'}</span>
@@ -599,7 +619,14 @@ function App() {
         body: JSON.stringify({ email })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to send code");
+      
+      if (!res.ok) {
+        const errorMsg = typeof data.detail === 'string' 
+          ? data.detail 
+          : (data.detail?.msg || "Failed to send code");
+        throw new Error(errorMsg);
+      }
+      
       setOtpSent(true);
     } catch (err: any) {
       setAuthError(err.message);
@@ -651,7 +678,12 @@ function App() {
       });
       const data = await res.json();
       
-      if (!res.ok) throw new Error(data.detail || "Authentication failed");
+      if (!res.ok) {
+  const errorMsg = typeof data.detail === 'string' 
+    ? data.detail 
+    : (data.detail?.msg || "Authentication failed");
+  throw new Error(errorMsg);
+}
       
       setIsAuthenticated(true);
       setShowAuthModal(false);
@@ -664,7 +696,7 @@ function App() {
     }
   };
 
-  const handleGoogleLoginSuccess = async (credentialResponse: any) => {
+const handleGoogleLoginSuccess = async (credentialResponse: any) => {
     setAuthLoading(true);
     setAuthError("");
     try {
@@ -678,13 +710,19 @@ function App() {
       });
       const data = await res.json();
       
-      if (!res.ok) throw new Error(data.detail || "Google authentication failed");
+      if (!res.ok) {
+        const errorMsg = typeof data.detail === 'string' 
+          ? data.detail 
+          : (data.detail?.msg || "Google authentication failed");
+        throw new Error(errorMsg);
+      }
       
       setIsAuthenticated(true);
       setShowAuthModal(false);
       
       if (selectedFile) uploadAndAnalyze(selectedFile);
     } catch (err: any) {
+      console.log("Full error object:", err);
       setAuthError(err.message || "An unexpected error occurred");
     } finally {
       setAuthLoading(false);
@@ -869,18 +907,14 @@ function App() {
             </form>
 
             <div className="mt-6 text-sm text-[#8E8E93]">
-             {authMode === 'signup' ? "Already have an account? " : "Don't have an account? "}
-             <button 
-              onClick={() => { 
-                setAuthMode(authMode === 'signup' ? 'login' : 'signup'); 
-                setAuthError(""); 
-                setOtpSent(false); // <-- Add this one-line fix right here!
-    }} 
-    className="text-white font-bold hover:underline"
-  >
-    {authMode === 'signup' ? "Log in" : "Sign up"}
-  </button>
-</div>
+              {authMode === 'signup' ? "Already have an account? " : "Don't have an account? "}
+              <button 
+                onClick={() => { setAuthMode(authMode === 'signup' ? 'login' : 'signup'); setAuthError(""); setOtpSent(false); }} 
+                className="text-white font-bold hover:underline"
+              >
+                {authMode === 'signup' ? "Log in" : "Sign up"}
+              </button>
+            </div>
 
             <div className="mt-8 text-xs text-[#636366] leading-relaxed">
               by continuing, you are agreeing to Divine Decibels's <button className="text-white font-bold hover:underline">Terms of Service</button> and <button className="text-white font-bold hover:underline">Privacy Policy</button>
