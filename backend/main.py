@@ -181,7 +181,7 @@ async def auth_google(payload: GoogleAuthRequest):
         raise HTTPException(status_code=401, detail="Invalid Google token.")
 
     email = user_info["email"]
-    name  = user_info.get("name", email.split("@")[0])
+    name  = user_info.get("name", email.split("@"))
 
     existing = users_collection.find_one({"email": email})
     if not existing:
@@ -247,8 +247,8 @@ def get_band_correlation(y_stereo, sr, lowcut, highcut):
     else:
         sos = butter(4, [lowcut / nyq, highcut / nyq], btype='band', output='sos')
     
-    l_filt = sosfilt(sos, y_stereo[0])
-    r_filt = sosfilt(sos, y_stereo[1])
+    l_filt = sosfilt(sos, y_stereo)
+    r_filt = sosfilt(sos, y_stereo)
     return calculate_true_correlation(l_filt, r_filt)
 
 def fast_true_peak(y_flat: np.ndarray, sr: int) -> float:
@@ -307,7 +307,7 @@ def load_audio_smart(file_path: str, max_duration_s: int = 30):
         segment = f.read(window_frames, dtype='float32', always_2d=True)
 
     y = segment.T
-    return (y if y.shape[0] == 2 else np.vstack((y, y))), sr
+    return (y if y.shape == 2 else np.vstack((y, y))), sr
 
 def get_full_timeline(file_path: str, block_s: int = 4) -> list:
     """
@@ -334,9 +334,9 @@ def get_full_timeline(file_path: str, block_s: int = 4) -> list:
 def analyze_audio(y: np.ndarray, sr: int):
     is_stereo = y.ndim == 2
     if is_stereo:
-        if y.shape[0] != 2:
+        if y.shape != 2:
             y = y.T
-        is_stereo = y.shape[0] == 2
+        is_stereo = y.shape == 2
     
     y_stereo = y if is_stereo else np.vstack((y, y))
     y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
@@ -349,8 +349,8 @@ def analyze_audio(y: np.ndarray, sr: int):
     dc_offset = float(np.mean(y_mono))
     
     if is_stereo:
-        rms_l = 20 * np.log10(np.sqrt(np.mean(y_stereo[0]**2)) + 1e-10)
-        rms_r = 20 * np.log10(np.sqrt(np.mean(y_stereo[1]**2)) + 1e-10)
+        rms_l = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
+        rms_r = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
         lr_balance_diff = round(abs(rms_l - rms_r), 2)
     else:
         lr_balance_diff = 0.0
@@ -364,7 +364,7 @@ def analyze_audio(y: np.ndarray, sr: int):
     else:
         macro_dynamics = 0.0
 
-    overall_corr = calculate_true_correlation(y_stereo[0], y_stereo[1])
+    overall_corr = calculate_true_correlation(y_stereo, y_stereo)
     low_corr = get_band_correlation(y_stereo, sr, 0, 150)
     high_corr = get_band_correlation(y_stereo, sr, 5000, sr/2)
 
@@ -387,9 +387,9 @@ def analyze_audio(y: np.ndarray, sr: int):
     target_freqs = np.geomspace(20, 20000, num=100)
     indices = [np.argmin(np.abs(freqs_filtered - f)) for f in target_freqs]
 
-    mono_signal = (y_stereo[0] + y_stereo[1]) / 2.0
-    rms_l = np.sqrt(np.mean(y_stereo[0]**2) + 1e-12)
-    rms_r = np.sqrt(np.mean(y_stereo[1]**2) + 1e-12)
+    mono_signal = (y_stereo + y_stereo) / 2.0
+    rms_l = np.sqrt(np.mean(y_stereo**2) + 1e-12)
+    rms_r = np.sqrt(np.mean(y_stereo**2) + 1e-12)
     rms_stereo = np.sqrt((rms_l**2 + rms_r**2) / 2.0)
     rms_mono = np.sqrt(np.mean(mono_signal**2) + 1e-12)
     mono_compatibility = round(20 * np.log10(rms_mono / rms_stereo), 1)
@@ -446,7 +446,7 @@ def generate_diagnostics(metrics, raw_mags, raw_freqs, genre):
     
     def get_band_energy(low_f, high_f):
         idx = np.where((raw_freqs >= low_f) & (raw_freqs <= high_f))
-        if len(idx[0]) == 0: return -100.0
+        if len(idx) == 0: return -100.0
         linear_amps = 10 ** (raw_mags[idx] / 20)
         mean_power  = np.mean(linear_amps ** 2)
         return 10 * np.log10(mean_power + 1e-12)
@@ -531,7 +531,17 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
             await asyncio.sleep(0.05)
             full_timeline = get_full_timeline(file_path)
 
-            # Step 2: Smart load — only the loudest 60s for DSP
+            # Compute DR from full-track timeline (far more accurate than 30s window)
+            full_dr = 0.0
+            if len(full_timeline) >= 5:
+                sorted_tl = sorted(full_timeline, reverse=True)
+                top_20pct = sorted_tl[:max(1, len(sorted_tl) // 5)]
+                full_dr = round(
+                    float(np.percentile(top_20pct, 50)) - float(np.percentile(full_timeline, 50)),
+                    1
+                )
+
+            # Step 2: Smart load — only the loudest 60s for DSP analysis
             yield f"data: {json.dumps({'progress': 30, 'message': 'Loading analysis window...'})}\n\n"
             await asyncio.sleep(0.05)
             audio_data, samplerate = load_audio_smart(file_path, max_duration_s=60)
@@ -559,6 +569,7 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
                 "metrics": {
                     **analysis["metrics"],
                     "loudness_timeline": full_timeline,
+                    "dr": full_dr,  # ← override windowed DR with full-track DR
                 },
                 "issues": issues,
                 "spectrum": analysis["spectrum"],
