@@ -251,8 +251,8 @@ def get_band_correlation(y_stereo, sr, lowcut, highcut):
     else:
         sos = butter(4, [lowcut / nyq, highcut / nyq], btype='band', output='sos')
     
-    l_filt = sosfilt(sos, y_stereo)
-    r_filt = sosfilt(sos, y_stereo)
+    l_filt = sosfilt(sos, y_stereo[0])
+    r_filt = sosfilt(sos, y_stereo[1])
     return calculate_true_correlation(l_filt, r_filt)
 
 
@@ -275,7 +275,7 @@ def fast_true_peak(y_flat: np.ndarray, sr: int) -> float:
     return round(max_tp, 1)
 
 
-def load_audio_smart(file_path: str, max_duration_s: int = 60):
+def load_audio_smart(file_path: str, max_duration_s: int = 30):
     """
     Loads a fixed window starting at 20% into the track.
     Deterministic — same file always gives same diagnostic window.
@@ -303,13 +303,27 @@ def load_audio_smart(file_path: str, max_duration_s: int = 60):
         y = data.T
 
     # Normalise channel count to exactly 2
-    if y.ndim == 1 or y.shape[0] == 1:
-        y = np.vstack((y.flatten(), y.flatten()))
-    elif y.shape[0] > 2:
-        y = y[:2]
+    # Normalize audio to (channels, samples)
+    if y.ndim == 1:
+        y = np.vstack((y, y))
 
+    elif y.ndim == 2:
+
+        # Audio loaded as (samples, channels)
+        if y.shape[0] > y.shape[1]:
+            y = y.T
+
+        channels = y.shape[0]
+
+        if channels == 1:
+            y = np.vstack((y, y))
+
+        elif channels > 2:
+            y = y[:2]
+            
     return y, sr
 
+    
 
 def get_full_timeline(file_path: str, block_s: int = 4) -> list:
     """
@@ -333,15 +347,10 @@ def get_full_timeline(file_path: str, block_s: int = 4) -> list:
     return timeline
     
 # --- Core Analyzer ---
-def analyze_audio(y: np.ndarray, sr: int) -> dict:
+def analyze_audio(y, sr):
     y = np.asarray(y, dtype=np.float32)
-
-    if y.ndim == 1:
-        y = np.vstack((y, y))
-
     y_stereo = y
-    y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
-
+    y_mono = np.mean(y, axis=0)
     
     meter = pyln.Meter(sr) 
     y_transposed = y_stereo.T 
@@ -351,32 +360,48 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
     dc_offset = float(np.mean(y_mono))
     
     # RESTORED: and for Left/Right RMS
-    rms_l = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
-    rms_r = 20 * np.log10(np.sqrt(np.mean(y_stereo**2)) + 1e-10)
+    rms_l = 20 * np.log10(np.sqrt(np.mean(y_stereo[0] ** 2)) + 1e-10)
+    rms_r = 20 * np.log10(np.sqrt(np.mean(y_stereo[1] ** 2)) + 1e-10)
     lr_balance_diff = round(abs(rms_l - rms_r), 2)
 
-    n_blocks = len(y_mono) // sr
-    if n_blocks > 0:
-        blocks = np.array_split(y_mono[:n_blocks*sr], n_blocks)
-        block_rms = [np.sqrt(np.mean(b**2)) for b in blocks]
-        block_db = [20 * np.log10(rms + 1e-10) for rms in block_rms]
+    block_size = sr
+    block_db = []
+    for start in range(0, len(y_mono) - block_size + 1, block_size):
+        block = y_mono[start:start+block_size]
+        rms = np.sqrt(np.mean(block**2) + 1e-10)
+        block_db.append(20 * np.log10(rms))
+        
+    if block_db:
         macro_dynamics = np.percentile(block_db, 95) - np.percentile(block_db, 5)
     else:
         macro_dynamics = 0.0
 
     # RESTORED: and for Correlation
-    overall_corr = calculate_true_correlation(y_stereo, y_stereo)
+    overall_corr = calculate_true_correlation(y_stereo[0], y_stereo[1])
     low_corr = get_band_correlation(y_stereo, sr, 0, 150)
     high_corr = get_band_correlation(y_stereo, sr, 5000, sr/2)
 
     n_fft      = 2048
     hop_length = n_fft // 4
     win        = np.hanning(n_fft).astype(np.float32)
-    frames = [
-    np.abs(np.fft.rfft(y_mono[s:s + n_fft] * win))
-    for s in range(0, len(y_mono) - n_fft, hop_length)
-    ]
-    avg_mag    = np.mean(frames, axis=0) if frames else np.abs(np.fft.rfft(y_mono[:n_fft]))
+    
+    avg_mag = None
+    count = 0
+
+    for s in range(0, len(y_mono) - n_fft, hop_length):
+        mag = np.abs(np.fft.rfft(y_mono[s:s + n_fft] * win))
+        if avg_mag is None:
+            avg_mag = mag
+        else:
+            avg_mag += mag
+        count += 1
+
+    if count > 0:
+        avg_mag /= count
+    else:
+        frame = np.pad(y_mono,(0, max(0, n_fft - len(y_mono))))[:n_fft]
+        avg_mag = np.abs(np.fft.rfft(frame * win))
+        
     ref_val    = np.max(avg_mag) + 1e-12
     magnitudes = (20 * np.log10(avg_mag / ref_val + 1e-12)).astype(np.float32)
     frequencies = np.fft.rfftfreq(n_fft, 1.0 / sr).astype(np.float32)
@@ -389,36 +414,33 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
     indices = [np.argmin(np.abs(freqs_filtered - f)) for f in target_freqs]
 
     # RESTORED: and for Mono Compatibility
-    mono_signal = (y_stereo + y_stereo) / 2.0
-    rms_l_mono = np.sqrt(np.mean(y_stereo**2) + 1e-12)
-    rms_r_mono = np.sqrt(np.mean(y_stereo**2) + 1e-12)
-    rms_stereo = np.sqrt((rms_l_mono**2 + rms_r_mono**2) / 2.0)
-    rms_mono_calc = np.sqrt(np.mean(mono_signal**2) + 1e-12)
-    mono_compatibility = round(20 * np.log10(rms_mono_calc / rms_stereo), 1)
+    mono_signal = (y_stereo[0] + y_stereo[1]) / 2.0
+    rms_l = np.sqrt(np.mean(y_stereo[0] ** 2) + 1e-12)
+    rms_r = np.sqrt(np.mean(y_stereo[1] ** 2) + 1e-12)
+    rms_stereo = np.sqrt((rms_l**2 + rms_r**2) / 2)
+    rms_mono = np.sqrt(np.mean(mono_signal**2) + 1e-12)
+    mono_compatibility = round(20 * np.log10(rms_mono / rms_stereo),1)
 
-    block_size = 4 * sr
-    n_timeline_blocks = len(y_mono) // block_size
+    block_size_tl = 4 * sr
     loudness_timeline = []
     
-    if n_timeline_blocks > 0:
-        blocks = np.array_split(y_mono[:n_timeline_blocks*block_size], n_timeline_blocks)
-        for i, b in enumerate(blocks):
-            rms = np.sqrt(np.mean(b**2) + 1e-12)
-            db = 20 * np.log10(rms)
-            loudness_timeline.append(round(db, 1))
+    for start in range(0, len(y_mono) - block_size_tl + 1, block_size_tl):
+        block = y_mono[start:start+block_size_tl]
+        rms = np.sqrt(np.mean(block**2) + 1e-12)
+        loudness_timeline.append(round(20 * np.log10(rms), 1))
 
     dr_block_size = 3 * sr
-    n_dr_blocks = len(y_mono) // dr_block_size
+    dr_block_peaks = []
+    
+    for start in range(0, len(y_mono) - dr_block_size + 1, dr_block_size):
+        block = y_mono[start:start+dr_block_size]
+        block_rms = np.sqrt(np.mean(block**2))
+        dr_block_peaks.append(20 * np.log10(block_rms + 1e-12))
+        
     dr = 0.0
-    if n_dr_blocks > 0:
-        dr_blocks = np.array_split(y_mono[:n_dr_blocks*dr_block_size], n_dr_blocks)
-        dr_block_peaks = []
-        for b in dr_blocks:
-            block_rms = np.sqrt(np.mean(b**2))
-            dr_block_peaks.append(20 * np.log10(block_rms + 1e-12))
-        if len(dr_block_peaks) >= 5:
-            top_blocks = sorted(dr_block_peaks, reverse=True)[:max(1, len(dr_block_peaks) // 5)]
-            dr = round(np.percentile(top_blocks, 50) - np.percentile(dr_block_peaks, 50), 1)
+    if len(dr_block_peaks) >= 5:
+        top_blocks = sorted(dr_block_peaks, reverse=True)[:max(1, len(dr_block_peaks) // 5)]
+        dr = round(np.percentile(top_blocks, 50) - np.percentile(dr_block_peaks, 50), 1)
 
     return {
         "metrics": {
@@ -548,10 +570,10 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
                     1
                 )
 
-            # Step 2: Smart load — only the loudest 60s for DSP analysis
+            # Step 2: Smart load — only the loudest 30s for DSP analysis
             yield f"data: {json.dumps({'progress': 30, 'message': 'Loading analysis window...'})}\n\n"
             await asyncio.sleep(0.05)
-            audio_data, samplerate = load_audio_smart(file_path, max_duration_s=60)
+            audio_data, samplerate = load_audio_smart(file_path, max_duration_s=30)
 
             # Step 3: Core DSP analysis
             yield f"data: {json.dumps({'progress': 50, 'message': 'Calculating phase correlation & dynamics...'})}\n\n"
@@ -570,7 +592,7 @@ async def analyze_stream(file_id: str, genre: str = "Pop / Standard"):
             await asyncio.sleep(0.1)
             ai_summary = generate_ai_summary(analysis["metrics"], issues, genre)
 
-            # Final payload — inject full-track timeline over the 60s window version
+            # Final payload — inject full-track timeline over the 30s window version
             final_payload = {
                 "status": "complete",
                 "metrics": {
