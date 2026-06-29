@@ -332,27 +332,31 @@ def get_full_timeline(file_path: str, block_s: int = 4) -> list:
 
     return timeline
     
-
 # --- Core Analyzer ---
 def analyze_audio(y: np.ndarray, sr: int) -> dict:
-    # Bulletproof shape normalizer
     y = np.asarray(y, dtype=np.float32)
     
-    # FIX: Get the shape as a tuple
-    shape = y.shape
-    
+    # 1. Normalize dimensions to be (Channels, Samples)
     if y.ndim == 1:
+        # Mono 1D -> (2, N)
         y = np.vstack((y, y))
     elif y.ndim == 2:
-        # FIX: Access index 0 of the shape tuple to get channel count
-        channels = int(shape) 
+        # If (Samples, Channels), transpose to (Channels, Samples)
+        if y.shape > y.shape:
+            y = y.T
+        
+        # Now safely extract channels using integer indexing
+        channels = int(y.shape)
+        
         if channels == 1:
             y = np.vstack((y, y))
         elif channels > 2:
             y = y[:2, :]
-        
+    
+    # Now y is guaranteed to be (2, Samples)
     y_stereo = y
     y_mono = np.mean(y_stereo, axis=0).astype(np.float32)
+    # ... (rest of your function remains the same)
 
     meter = pyln.Meter(sr) 
     y_transposed = y_stereo.T # Now safely guarantees (samples, 2) structure
