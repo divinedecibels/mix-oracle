@@ -408,7 +408,7 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
   </div>
   <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
     <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">True Peak</p>
-    <p className="text-2xl font-black">{metrics.true_peak.toFixed(2)} <span className="text-xs text-[#3F3F46]">dBTP</span></p>
+    <p className="text-2xl font-black">{metrics.true_peak.toFixed(1)} <span className="text-xs text-[#3F3F46]">dBTP</span></p>
   </div>
   <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl">
     <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Correlation</p>
