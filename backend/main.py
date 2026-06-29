@@ -275,51 +275,39 @@ def fast_true_peak(y_flat: np.ndarray, sr: int) -> float:
     return round(max_tp, 1)
 
 
-def load_audio_smart(file_path: str, max_duration_s: int = 30):
+def load_audio_smart(file_path: str, max_duration_s: int = 60):
     """
-    Scans the entire file in tiny, memory-safe blocks to find the loudest moment (the chorus/drop),
-    then extracts a window centered around that peak for heavy DSP analysis.
+    Loads a fixed window starting at 20% into the track.
+    Deterministic — same file always gives same diagnostic window.
+    Skips intros, reliably hits verse+chorus content.
     """
     info = sf.info(file_path)
-    sr = info.samplerate
-    
-    # 1. Stream the file in 2-second blocks to find the loudest part
-    block_frames = int(sr * 2) 
-    max_energy = -1
-    peak_frame_position = 0
-    current_frame = 0
-    
-    # sf.blocks reads directly from the hard drive, bypassing RAM limits
-    for block in sf.blocks(file_path, blocksize=block_frames, dtype='float32', always_2d=True):
-        energy = float(np.mean(block ** 2))
-        if energy > max_energy:
-            max_energy = energy
-            peak_frame_position = current_frame
-        current_frame += block_frames
-
-    # 2. Calculate the start frame to center our 30-second window around the peak
+    sr           = info.samplerate
+    total_frames = info.frames
     window_frames = int(sr * max_duration_s)
-    half_window = window_frames // 2
-    
-    start_frame = max(0, peak_frame_position - half_window)
-    
-    # Ensure we don't try to read past the end of the file
-    if start_frame + window_frames > info.frames:
-        start_frame = max(0, info.frames - window_frames)
 
-    # 3. Load ONLY that peak 30-second window into memory
-    with sf.SoundFile(file_path) as f:
-        f.seek(start_frame)
-        segment = f.read(window_frames, dtype='float32', always_2d=True)
+    # Short file — load everything
+    if total_frames <= window_frames:
+        with sf.SoundFile(file_path) as f:
+            data = f.read(dtype='float32', always_2d=True)
+        y = data.T
+    else:
+        # Start at 20% — skips intro, lands on body of the track
+        start_frame = min(
+            int(total_frames * 0.20),
+            total_frames - window_frames   # don't run off the end
+        )
+        with sf.SoundFile(file_path) as f:
+            f.seek(start_frame)
+            data = f.read(window_frames, dtype='float32', always_2d=True)
+        y = data.T
 
-    y = segment.T
-    
-    # Force stereo configuration
-    if y.shape[0] == 1:
-        y = np.vstack((y, y))
+    # Normalise channel count to exactly 2
+    if y.ndim == 1 or y.shape[0] == 1:
+        y = np.vstack((y.flatten(), y.flatten()))
     elif y.shape[0] > 2:
-        y = y[:2, :]
-        
+        y = y[:2]
+
     return y, sr
 
 
