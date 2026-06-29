@@ -315,9 +315,9 @@ def load_audio_smart(file_path: str, max_duration_s: int = 30):
     y = segment.T
     
     # Force stereo configuration
-    if y.shape == 1:
+    if y.shape[0] == 1:
         y = np.vstack((y, y))
-    elif y.shape > 2:
+    elif y.shape[0] > 2:
         y = y[:2, :]
         
     return y, sr
@@ -350,9 +350,9 @@ def analyze_audio(y: np.ndarray, sr: int) -> dict:
     # Normalize to stereo regardless of input channel count
     if y.ndim == 1:
         y = np.vstack((y, y))
-    elif y.shape == 1:
+    elif y.shape[0] == 1:
         y = np.vstack((y, y))
-    elif y.shape > 2:
+    elif y.shape[0] > 2:
         y = y[:2, :]
         
     y_stereo = y
