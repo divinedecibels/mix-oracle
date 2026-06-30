@@ -21,6 +21,9 @@ import bcrypt
 import json
 import asyncio
 import shutil
+import imageio_ffmpeg
+import subprocess
+FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 from dotenv import load_dotenv, find_dotenv
 from google import genai
 from google.oauth2 import id_token
@@ -218,17 +221,38 @@ async def request_service(name: str = Form(...), email: str = Form(...), message
 @app.post("/upload")
 @limiter.limit("10/minute")
 async def upload_file(request: Request, file: UploadFile = File(...)):
-    file_id = str(uuid.uuid4())
-    file_path = os.path.join("temp_uploads", f"{file_id}_{file.filename}")
-    
-    # Async chunked streaming: strictly limits RAM to 1MB and never freezes the server
-    with open(file_path, "wb") as buffer:
+    file_id   = str(uuid.uuid4())
+    orig_path = os.path.join("temp_uploads", f"{file_id}_{file.filename}")
+
+    # Save the raw upload (chunked, never more than 1MB in RAM)
+    with open(orig_path, "wb") as buffer:
         while True:
-            chunk = await file.read(1024 * 1024)  # Read exactly 1MB at a time
+            chunk = await file.read(1024 * 1024)
             if not chunk:
                 break
             buffer.write(chunk)
-            
+
+    ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""
+
+    # WAV/AIFF already seek instantly — skip conversion
+    if ext in ("wav", "wave", "aif", "aiff"):
+        return {"file_id": file_id, "filename": file.filename}
+
+    # MP3 (or anything else) → convert to WAV once, here.
+    # This is what fixes the slowness: every later read/seek becomes
+    # instant PCM access instead of a disguised full re-decode.
+    wav_path = os.path.join("temp_uploads", f"{file_id}_converted.wav")
+    proc = await asyncio.create_subprocess_exec(
+        FFMPEG_PATH, "-y", "-i", orig_path, "-ar", "44100", "-ac", "2", wav_path,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    os.remove(orig_path)  # don't keep the compressed original around
+
+    if proc.returncode != 0 or not os.path.exists(wav_path):
+        raise HTTPException(status_code=400, detail="Could not decode this audio file. Try exporting as WAV.")
+
     return {"file_id": file_id, "filename": file.filename}
 
 
