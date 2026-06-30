@@ -402,12 +402,12 @@ const ReportView = ({ results, audioUrl, onReset }: { results: AnalysisResults, 
 
 {/* Metric Cards */}    
 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-  <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
-    <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Loudness</p>
-    <p className="text-2xl font-black truncate" title={`${metrics.lufs} LUFS`}>
-      {Number(metrics.lufs).toFixed(1)} <span className="text-xs text-[#3F3F46]">LUFS</span>
-    </p>
-  </div>
+ <div className="bg-[#111116] border border-[#26262C] p-3 xl:p-4 rounded-2xl">
+  <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">Loudness</p>
+  <p className="text-xl xl:text-2xl font-black whitespace-nowrap tracking-tighter">
+    {metrics.lufs} <span className="text-[10px] xl:text-xs text-[#3F3F46] ml-0.5">LUFS</span>
+  </p>
+</div>
   
   <div className="bg-[#111116] border border-[#26262C] p-4 rounded-2xl min-w-0 overflow-hidden">
     <p className="text-[10px] text-[#6B7280] font-bold uppercase mb-1">True Peak</p>
